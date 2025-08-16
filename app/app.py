@@ -6,7 +6,7 @@ import requests
 from datetime import datetime
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your_secret_key_change_in_production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -32,13 +32,39 @@ class Admin(db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
 
+def upgrade_database():
+    """Add missing columns to existing database"""
+    try:
+        # Check if dispensed column exists by attempting to query it
+        db.engine.execute("SELECT dispensed FROM transaction LIMIT 1")
+        print("Database is up to date")
+    except Exception as e:
+        try:
+            # Column doesn't exist, add it
+            print("Adding dispensed column to transaction table...")
+            db.engine.execute("ALTER TABLE transaction ADD COLUMN dispensed BOOLEAN DEFAULT 0")
+            # Update existing records to have dispensed=False
+            db.engine.execute("UPDATE transaction SET dispensed = 0 WHERE dispensed IS NULL")
+            db.session.commit()
+            print("Database upgraded successfully!")
+        except Exception as upgrade_error:
+            print(f"Database upgrade failed: {upgrade_error}")
+            # If upgrade fails, recreate the database
+            print("Recreating database...")
+            db.drop_all()
+            db.create_all()
+
 with app.app_context():
     db.create_all()
+    upgrade_database()
+    
+    # Create default admin if doesn't exist
     if not Admin.query.first():
         hashed_password = generate_password_hash('adminpass')
         new_admin = Admin(username='admin', password=hashed_password)
         db.session.add(new_admin)
         db.session.commit()
+        print("Default admin created: username='admin', password='adminpass'")
 
 # --- User Routes ---
 @app.route('/')
@@ -114,30 +140,70 @@ def buy_pads():
 
     # Deduct points and record transaction
     user.wallet_points -= points_needed
-    new_transaction = Transaction(user_id=user.id, pads=pads_to_buy, points_deducted=points_needed)
+    new_transaction = Transaction(
+        user_id=user.id, 
+        pads=pads_to_buy, 
+        points_deducted=points_needed,
+        dispensed=False  # Explicitly set dispensed to False
+    )
     db.session.add(new_transaction)
     db.session.commit()
 
+    flash(f'Successfully purchased {pads_to_buy} pads for {points_needed} points!')
     return redirect(url_for('index'))
 
 # --- API for ESP32 Polling ---
 @app.route('/api/dispense_jobs', methods=['GET'])
 def dispense_jobs():
-    # Find the oldest transaction that has not been dispensed yet
-    transaction_to_dispense = db.session.query(Transaction).filter_by(dispensed=False).order_by(Transaction.timestamp.asc()).first()
+    try:
+        # Find the oldest transaction that has not been dispensed yet
+        transaction_to_dispense = db.session.query(Transaction).filter_by(dispensed=False).order_by(Transaction.timestamp.asc()).first()
 
-    if transaction_to_dispense:
-        # Mark the transaction as dispensed to avoid processing it again
-        transaction_to_dispense.dispensed = True
-        db.session.commit()
-        
-        # Return the number of pads for the ESP32 to dispense
-        # The response is a simple string: "pads:<number>"
-        return f"pads:{transaction_to_dispense.pads}"
-    else:
-        # No pending jobs, return "pads:0"
+        if transaction_to_dispense:
+            # Mark the transaction as dispensed to avoid processing it again
+            transaction_to_dispense.dispensed = True
+            db.session.commit()
+            
+            # Return the number of pads for the ESP32 to dispense
+            return f"pads:{transaction_to_dispense.pads}"
+        else:
+            # No pending jobs, return "pads:0"
+            return "pads:0"
+    except Exception as e:
+        print(f"Error in dispense_jobs: {e}")
         return "pads:0"
 
+@app.route('/api/dispense_confirmation', methods=['POST'])
+def dispense_confirmation():
+    """Optional endpoint for ESP32 to confirm successful dispensing"""
+    try:
+        data = request.get_json()
+        pads_dispensed = data.get('pads_dispensed')
+        device_id = data.get('device_id')
+        
+        # Log the confirmation
+        print(f"ESP32 {device_id} confirmed dispensing {pads_dispensed} pads")
+        
+        return "OK", 200
+    except Exception as e:
+        print(f"Error processing confirmation: {e}")
+        return "Error", 400
+
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    """Health check endpoint"""
+    try:
+        # Check database connection
+        user_count = User.query.count()
+        pending_transactions = Transaction.query.filter_by(dispensed=False).count()
+        
+        return {
+            "status": "healthy",
+            "users": user_count,
+            "pending_dispensing": pending_transactions
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}, 500
 
 # --- Admin Routes ---
 @app.route('/admin')
@@ -181,7 +247,28 @@ def manage_points():
 
     return redirect(url_for('admin_dashboard'))
 
+@app.route('/admin/reset_dispensing', methods=['POST'])
+def reset_dispensing():
+    """Admin endpoint to reset all pending dispensing jobs"""
+    if 'admin_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        # Reset all undispensed transactions
+        pending_transactions = Transaction.query.filter_by(dispensed=False).all()
+        for transaction in pending_transactions:
+            transaction.dispensed = True
+        
+        db.session.commit()
+        flash(f'Reset {len(pending_transactions)} pending dispensing jobs.')
+    except Exception as e:
+        flash(f'Error resetting dispensing jobs: {e}')
+    
+    return redirect(url_for('admin_dashboard'))
 
 if __name__ == '__main__':
-    # Use '0.0.0.0' to make the app accessible on your local network
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    # For Render deployment - use PORT environment variable
+    port = int(os.environ.get('PORT', 5001))
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
