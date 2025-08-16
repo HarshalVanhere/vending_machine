@@ -1,0 +1,10 @@
+# Virtual Environment
+venv/
+/venv/
+__pycache__/
+*.pyc
+
+# Instance folder
+/instance/
+*.db
+.env
