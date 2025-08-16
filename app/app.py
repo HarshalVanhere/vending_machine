@@ -24,6 +24,7 @@ class Transaction(db.Model):
     pads = db.Column(db.Integer, nullable=False)
     points_deducted = db.Column(db.Integer, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    dispensed = db.Column(db.Boolean, default=False, nullable=False)
     user = db.relationship('User', backref=db.backref('transactions', lazy=True))
 
 class Admin(db.Model):
@@ -117,23 +118,26 @@ def buy_pads():
     db.session.add(new_transaction)
     db.session.commit()
 
-    # Make API call to Raspberry Pi
-    try:
-        # Replace with your Raspberry Pi's actual IP address
-        # rpi_ip = "192.168.1.100" 
-        # response = requests.get(f"http://{rpi_ip}:5000/dispense?pads={pads_to_buy}", timeout=5)
-        # if response.status_code == 200:
-        #     flash(f'Successfully purchased {pads_to_buy} pads! Dispensing now.')
-        # else:
-        #     flash('Purchase successful, but failed to contact the vending machine.')
-        #     # NOTE: In a real-world scenario, you'd handle this failure, 
-        #     # maybe by refunding the points.
-        flash(f'Successfully purchased {pads_to_buy} pads! (Simulated dispense)')
-    except requests.exceptions.RequestException as e:
-        flash(f'Purchase successful, but could not connect to the vending machine: {e}')
-        # Handle failure, maybe refund points
-    
     return redirect(url_for('index'))
+
+# --- API for ESP32 Polling ---
+@app.route('/api/dispense_jobs', methods=['GET'])
+def dispense_jobs():
+    # Find the oldest transaction that has not been dispensed yet
+    transaction_to_dispense = db.session.query(Transaction).filter_by(dispensed=False).order_by(Transaction.timestamp.asc()).first()
+
+    if transaction_to_dispense:
+        # Mark the transaction as dispensed to avoid processing it again
+        transaction_to_dispense.dispensed = True
+        db.session.commit()
+        
+        # Return the number of pads for the ESP32 to dispense
+        # The response is a simple string: "pads:<number>"
+        return f"pads:{transaction_to_dispense.pads}"
+    else:
+        # No pending jobs, return "pads:0"
+        return "pads:0"
+
 
 # --- Admin Routes ---
 @app.route('/admin')
