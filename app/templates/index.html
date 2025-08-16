@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}User Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card text-center">
+            <div class="card-header">
+                <h2>Welcome, {{ user.username }}!</h2>
+            </div>
+            <div class="card-body">
+                <h5 class="card-title">Your Wallet Balance</h5>
+                <p class="card-text display-4">{{ user.wallet_points }} Points</p>
+                <hr>
+                <h5 class="card-title mt-4">Buy Sanitary Pads</h5>
+                <p class="card-text">Each pad costs 10 points.</p>
+                
+                <form action="{{ url_for('buy_pads') }}" method="POST" class="form-inline justify-content-center">
+                    <div class="form-group mx-sm-3 mb-2">
+                        <label for="pads" class="sr-only">Number of Pads</label>
+                        <input type="number" class="form-control" id="pads" name="pads" min="1" value="1" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary mb-2">Buy Now</button>
+                </form>
+            </div>
+            <div class="card-footer text-muted">
+                Stay healthy!
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
