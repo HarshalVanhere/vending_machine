@@ -152,6 +152,25 @@ def buy_pads():
     flash(f'Successfully purchased {pads_to_buy} pads for {points_needed} points!')
     return redirect(url_for('index'))
 
+@app.route('/buy_first_aid_kit', methods=['POST'])
+def buy_first_aid_kit():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    user = User.query.get(session['user_id'])
+    if request.method == 'POST':
+        pads = int(request.form.get('pads', 1))
+        cost = pads * 10
+        if user.wallet_points < cost:
+            flash('Not enough points to buy First Aid Kit(s).')
+            return redirect(url_for('index'))
+        user.wallet_points -= cost
+        tx = Transaction(user_id=user.id, pads=pads, points_deducted=cost)
+        db.session.add(tx)
+        db.session.commit()
+        flash(f'Purchase successful — {pads} First Aid Kit(s) ordered. The machine will dispense shortly.')
+        return redirect(url_for('index'))
+
 # --- API for ESP32 Polling ---
 @app.route('/api/dispense_jobs', methods=['GET'])
 def dispense_jobs():

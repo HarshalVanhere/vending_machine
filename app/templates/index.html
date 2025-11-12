@@ -13,16 +13,27 @@
                 <h5 class="card-title">Your Wallet Balance</h5>
                 <p class="card-text display-4">{{ user.wallet_points }} Points</p>
                 <hr>
-                <h5 class="card-title mt-4">Buy Sanitary Pads</h5>
-                <p class="card-text">Each pad costs 10 points.</p>
-                
+                <h1 class="mb-3">Buy First Aid Kits</h1>
+
+                <p>Your wallet balance: <strong>{{ user.wallet_points }} points</strong></p>
+                <p>Each First Aid Kit costs <strong>10 points</strong>.</p>
+
                 <form action="{{ url_for('buy_pads') }}" method="POST" class="form-inline justify-content-center">
                     <div class="form-group mx-sm-3 mb-2">
-                        <label for="pads" class="sr-only">Number of Pads</label>
+                        <label for="pads" class="sr-only">Number of Kits</label>
                         <input type="number" class="form-control" id="pads" name="pads" min="1" value="1" required>
                     </div>
                     <button type="submit" class="btn btn-primary mb-2">Buy Now</button>
                 </form>
+
+                <!-- flash messages -->
+                {% with messages = get_flashed_messages() %}
+                  {% if messages %}
+                    {% for msg in messages %}
+                      <div class="alert alert-info mt-3">{{ msg | safe }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
             </div>
             <div class="card-footer text-muted">
                 Stay healthy!
