@@ -130,7 +130,7 @@ def buy_pads():
         if pads_to_buy <= 0:
             raise ValueError
     except (ValueError, KeyError):
-        flash('Invalid number of pads.')
+        flash('Invalid number of kits.')
         return redirect(url_for('index'))
 
     points_needed = pads_to_buy * 10
@@ -149,7 +149,7 @@ def buy_pads():
     db.session.add(new_transaction)
     db.session.commit()
 
-    flash(f'Successfully purchased {pads_to_buy} pads for {points_needed} points!')
+    flash(f'Successfully purchased {pads_to_buy} kits for {points_needed} points!')
     return redirect(url_for('index'))
 
 @app.route('/buy_first_aid_kit', methods=['POST'])
